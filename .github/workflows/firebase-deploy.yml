@@ -33,16 +33,20 @@ jobs:
           workload_identity_provider: 'projects/489381507990/locations/global/workloadIdentityPools/github-pool/providers/github-provider'
           service_account: 'github-action-1335663638@axiomatic-spark-505611-t0.iam.gserviceaccount.com'
 
-      # --- FRONTEND DEPLOY ---
-      - name: Deploy to Firebase Hosting
-        run: |
-          npm install -g firebase-tools@15.30.1
-          firebase deploy --only hosting --project axiomatic-spark-505611-t0
-
-      # --- BACKEND DEPLOY ---
+      # Installs the gcloud CLI on top of the WIF credential above, so later steps can
+      # mint tokens from it. Runs before the hosting deploy for that reason.
       - name: Set up Cloud SDK Config
         uses: google-github-actions/setup-gcloud@v2
 
+      # --- FRONTEND DEPLOY ---
+      # The Firebase CLI does not accept the ambient WIF credential file, so it gets an
+      # explicit access token from the gcloud configuration set up just above.
+      - name: Deploy to Firebase Hosting
+        run: |
+          npm install -g firebase-tools@15.30.1
+          firebase deploy --only hosting --project axiomatic-spark-505611-t0 --token "$(gcloud auth print-access-token)"
+
+      # --- BACKEND DEPLOY ---
       - name: Authorize Docker Push to Google Artifact Registry
         run: |
           gcloud auth configure-docker europe-west1-docker.pkg.dev --quiet
