@@ -1,11 +1,35 @@
 ---
-import { getCollection, render } from 'astro:content';
+import { getCollection, render, type CollectionEntry } from 'astro:content';
 import Layout from '../layouts/Layout.astro';
 import AIAssistant from '../components/AIAssistant.vue';
+
+type WritingEntry = CollectionEntry<'writing'>;
 
 // 1. Fetch data from content collections
 const rawExperience = await getCollection('experience');
 const rawProjects = await getCollection('projects');
+
+// Writing posts that point at a project via `relatedProject`, grouped by that
+// project slug and sorted newest first, so each project card can link back to
+// the posts written about it. Fetched once here, not per card.
+const rawWriting = await getCollection('writing', ({ data }) => {
+  return import.meta.env.PROD ? data.draft !== true : true;
+});
+
+const writingByProject = new Map<string, WritingEntry[]>();
+for (const post of rawWriting) {
+  const slug = post.data.relatedProject;
+  if (!slug) continue;
+  const group = writingByProject.get(slug);
+  if (group) {
+    group.push(post);
+  } else {
+    writingByProject.set(slug, [post]);
+  }
+}
+for (const group of writingByProject.values()) {
+  group.sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
+}
 
 // Helper to convert date strings like "Mar 2024" or "2024-03" into numbers for sorting
 const parseDate = (dateStr?: string) => {
@@ -94,7 +118,9 @@ const processedProjects = await Promise.all(
         Projects
       </h2>
       <div class="grid gap-6 md:grid-cols-2">
-        {processedProjects.map((project) => (
+        {processedProjects.map((project) => {
+          const relatedPosts = writingByProject.get(project.id) ?? [];
+          return (
           <div id={project.id} class="bg-slate-900 border border-slate-800 rounded-xl p-6 flex flex-col justify-between hover:border-slate-700 transition-colors scroll-mt-24">
             <div class="space-y-3">
               <div class="flex items-center justify-between">
@@ -127,8 +153,26 @@ const processedProjects = await Promise.all(
                 ))}
               </div>
             )}
+
+            {relatedPosts.length > 0 && (
+              <div class="mt-6 pt-4 border-t border-slate-800/60">
+                <p class="text-xs font-mono text-slate-500 uppercase tracking-wide mb-2">Related writing</p>
+                <div class="space-y-2">
+                  {relatedPosts.map((post) => (
+                    <a href={`/writing/${post.id}/`} class="block bg-slate-900 border border-slate-800 rounded-xl p-4 hover:border-slate-700 transition-colors">
+                      <p class="text-white font-semibold">{post.data.title}</p>
+                      <p class="text-sm text-slate-400 mt-1">
+                        {post.data.date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+                        {post.data.readingTime && <span>&middot; {post.data.readingTime}</span>}
+                      </p>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
-        ))}
+          );
+        })}
       </div>
     </section>
 
