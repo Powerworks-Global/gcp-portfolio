@@ -1,0 +1,9 @@
+{
+  "name": "portfolio-firebase-tools-toolchain",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Frozen firebase-tools toolchain for the Hosting deploy step. Tree reproduced by publish date via `npm install --before`; see .github/workflows/firebase-deploy.yml.",
+  "dependencies": {
+    "firebase-tools": "15.30.1"
+  }
+}

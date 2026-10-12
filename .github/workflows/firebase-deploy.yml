@@ -38,32 +38,26 @@ jobs:
       - name: Set up Cloud SDK Config
         uses: google-github-actions/setup-gcloud@v2
 
-      # Mints an OAuth 2.0 access token from the same workload identity provider and service
-      # account as the identity step above - the token path that step already uses. It writes
-      # no credential file and exports no environment variables, so the credential file (and
-      # the GOOGLE_APPLICATION_CREDENTIALS / CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE pointers)
-      # the registry and Cloud Run steps rely on stay exactly as the identity step left them.
-      - name: Mint access token for Firebase Hosting
-        id: firebase_token
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: 'projects/489381507990/locations/global/workloadIdentityPools/github-pool/providers/github-provider'
-          service_account: 'github-action-1335663638@axiomatic-spark-505611-t0.iam.gserviceaccount.com'
-          token_format: 'access_token'
-          create_credentials_file: 'false'
-          export_environment_variables: 'false'
-
       # --- FRONTEND DEPLOY ---
-      # The Firebase CLI does not accept the ambient WIF credential file, so it gets an
-      # explicit access token from the step above. The token is handed over through a step-level
-      # environment variable and referenced by name, because GitHub prints the fully
-      # interpolated script of a run step to the log: inlining the token would publish it.
+      # FRAGILE PIN, not a preference. firebase-tools is installed from the committed
+      # lockfile in tooling/firebase-tools, whose whole transitive tree was frozen by
+      # publish date (`npm install --before=2026-09-14T21:07:31Z`, the last known-good
+      # publish) so the CLI keeps the dependency state of the last successful deploy.
+      # This deliberately stops the toolchain receiving upstream fixes.
+      # The deploy CLI again reads the ambient workload-identity credential file that the
+      # identity step above exports (GOOGLE_APPLICATION_CREDENTIALS), as it did before
+      # 2026-10-11; no OAuth token is minted because the deploy service account cannot
+      # mint one for itself (iam.serviceAccounts.getAccessToken is denied, and granting
+      # roles/iam.serviceAccountTokenCreator was declined for now).
+      # Durable fix: grant roles/iam.serviceAccountTokenCreator on the service account to
+      # the workload-identity principal. Revert: restore the token-mint step and the
+      # `--token` argument (small change to this one file). See the PR that added this pin.
+      - name: Install frozen firebase-tools toolchain
+        run: npm ci --prefix tooling/firebase-tools
+
       - name: Deploy to Firebase Hosting
-        env:
-          FIREBASE_TOKEN: ${{ steps.firebase_token.outputs.access_token }}
         run: |
-          npm install -g firebase-tools@15.30.1
-          firebase deploy --only hosting --project axiomatic-spark-505611-t0 --token "$FIREBASE_TOKEN"
+          node tooling/firebase-tools/node_modules/firebase-tools/lib/bin/firebase.js deploy --only hosting --project axiomatic-spark-505611-t0
 
       # --- BACKEND DEPLOY ---
       - name: Authorize Docker Push to Google Artifact Registry
