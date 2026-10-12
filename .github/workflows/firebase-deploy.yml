@@ -76,6 +76,11 @@ jobs:
           docker build -t europe-west1-docker.pkg.dev/axiomatic-spark-505611-t0/portfolio-repo/rag-backend:latest .
           docker push europe-west1-docker.pkg.dev/axiomatic-spark-505611-t0/portfolio-repo/rag-backend:latest
 
+      # The generation key is handed over as a Secret Manager reference, not a value:
+      # this step never sees the key itself and Cloud Run injects it into the container
+      # as OPENROUTER_API_KEY at start. The previous plaintext QDRANT_URL, QDRANT_API_KEY
+      # and OPENAI_API_KEY variables have to be cleared once by hand - a deploy copies
+      # the previous revision's configuration, so they would otherwise keep riding along.
       - name: Deploy to Cloud Run
         run: |
           gcloud run deploy rag-backend \
@@ -85,4 +90,5 @@ jobs:
             --allow-unauthenticated \
             --port=8080 \
             --max-instances=2 \
-            --concurrency=80
+            --concurrency=80 \
+            --set-secrets=OPENROUTER_API_KEY=rag-backend-openrouter-key:latest

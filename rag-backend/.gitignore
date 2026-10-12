@@ -1,0 +1,10 @@
+# Built during the Docker build (see Dockerfile and ingest.py) and baked into the
+# image. Never commit them: a fresh clone regenerates both from data/ during the build.
+index_store/
+model_cache/
+
+# Local environment and caches
+.env
+.env.*
+__pycache__/
+*.pyc
