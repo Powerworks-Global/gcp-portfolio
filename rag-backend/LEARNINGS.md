@@ -42,3 +42,29 @@ Also assert required env vars (OPENAI_API_KEY, QDRANT_URL, QDRANT_API_KEY) at st
 8. Test in this order
 
 /docs (routing/schema) → curl (raw HTTP) → frontend integration (hostname mismatches are a frequent last-mile bug).
+
+---
+
+## Follow-up: the hosted dependencies died, so they were deleted
+
+Items 1-8 above describe the original build, which kept its vectors in a free-tier Qdrant Cloud cluster and called OpenAI directly. That build no longer exists. What replaced it, and what the failure taught.
+
+9. A free cloud dependency dies of disuse, and your repository never mentions it
+
+The free Qdrant Cloud cluster was reclaimed after inactivity — not suspended, gone. Every query started failing on a dropped connection while the deployed service, the image and the pipeline all stayed green. Nothing under version control had changed, so the outage was invisible from CI: a dependency that a stranger can delete without a commit is a timer, not a service.
+
+10. Removing it meant removing the network from the request path, not moving it
+
+Retrieval is now LlamaIndex's built-in SimpleVectorStore read from a directory inside the image, and the prompt is embedded on CPU by fastembed over ONNX Runtime (BAAI/bge-small-en-v1.5, 384 dimensions). Generation is the only call that leaves the container, aimed at OpenRouter through the OpenAI schema — one credential, one bill. Nothing left on the request path can be dismantled from a distance. (Items 1, 4 and 7 above were properties of the hosted store this replaced.)
+
+11. A local embedding model is only local if its weights ship in the image
+
+fastembed pulls weights from the Hugging Face Hub on first use. Left alone, that is a cold-start network call with no retry — the original failure with a different URL. The Dockerfile runs ingest.py as a build step, which pulls the weights into model_cache/ inside the image, and the container runs with HF_HUB_OFFLINE=1, so a missing weight fails the build instead of the first query after a scale-from-zero.
+
+12. An index generated from files that are already in the repo is a build artifact
+
+The index is ~130 KB of JSON derived from committed prose, so it is not committed: the Dockerfile builds it, `.gitignore` ignores it, and a fresh clone still builds. Committing it would put the pair permanently out of step the first time someone edits a project page and forgets to re-run ingestion.
+
+13. Cloud Run keeps env vars you stopped reading
+
+The dead credentials were plaintext variables set on the service by hand, and a deploy copies the previous revision's configuration, so they survived every redeploy and every dependency change. Generation now arrives through `--set-secrets=OPENROUTER_API_KEY=<secret>:latest`, and the obsolete variables still have to be removed once by hand — `gcloud run services update rag-backend --region=europe-west1 --remove-env-vars=QDRANT_URL,QDRANT_API_KEY,OPENAI_API_KEY`.
